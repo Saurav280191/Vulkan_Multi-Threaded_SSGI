@@ -69,3 +69,4 @@ Testing/
 .cache/
 /.vs
 /Vulkan_Multi-Threaded_SSGI/x64
+/x64
