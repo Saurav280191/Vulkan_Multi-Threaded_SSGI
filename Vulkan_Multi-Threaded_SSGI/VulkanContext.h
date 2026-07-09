@@ -13,8 +13,8 @@ public:
 	VkQueue GetGraphicsQueue() const { return m_GraphicsQueue; }
 	VkQueue GetPresentQueue() const { return m_PresentQueue; }
 	VkSurfaceKHR GetSurface() const { return mSurface; }
-	VkSwapchainKHR GetSwapchain() const { return m_SwapChain; }
-	VkRenderPass GetRenderPass() const { return m_RenderPass; }
+	VkSwapchainKHR GetSwapchain() const { return mSwapChain; }
+	VkRenderPass GetRenderPass() const { return mRenderPass; }
 	VkPhysicalDevice GetPhysicalDevice() const { return mPhysicalDevice; }
 	VkExtent2D GetSwapchainExtent() const { return mSwapchainExtent; }
 	VkFormat GetSwapchainFormat() const { return mSwapchainFormat; }
@@ -30,8 +30,8 @@ private:
 	VkQueue m_GraphicsQueue = VK_NULL_HANDLE;
 	VkQueue m_PresentQueue = VK_NULL_HANDLE;
 	VkSurfaceKHR mSurface = VK_NULL_HANDLE;
-	VkSwapchainKHR m_SwapChain = VK_NULL_HANDLE;
-	VkRenderPass m_RenderPass = VK_NULL_HANDLE;
+	VkSwapchainKHR mSwapChain = VK_NULL_HANDLE;
+	VkRenderPass mRenderPass = VK_NULL_HANDLE;
 	VkExtent2D mSwapchainExtent{};
 	VkFormat mSwapchainFormat = VK_FORMAT_UNDEFINED;
 	std::vector<VkImage> mSwapchainImages;

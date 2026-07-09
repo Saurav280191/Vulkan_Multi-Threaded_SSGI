@@ -232,12 +232,12 @@ bool VulkanContext::CreateSwapchain()
         createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     }
 
-    if (vkCreateSwapchainKHR(m_Device, &createInfo, nullptr, &m_SwapChain) != VK_SUCCESS)
+    if (vkCreateSwapchainKHR(m_Device, &createInfo, nullptr, &mSwapChain) != VK_SUCCESS)
         return false;
 
-    vkGetSwapchainImagesKHR(m_Device, m_SwapChain, &imageCount, nullptr);
+    vkGetSwapchainImagesKHR(m_Device, mSwapChain, &imageCount, nullptr);
     mSwapchainImages.resize(imageCount);
-    vkGetSwapchainImagesKHR(m_Device, m_SwapChain, &imageCount, mSwapchainImages.data());
+    vkGetSwapchainImagesKHR(m_Device, mSwapChain, &imageCount, mSwapchainImages.data());
 
     mSwapchainFormat = surfaceFormat.format;
     mSwapchainExtent = extent;
@@ -305,5 +305,5 @@ bool VulkanContext::CreateRenderPass()
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
-    return vkCreateRenderPass(m_Device, &renderPassInfo, nullptr, &m_RenderPass) == VK_SUCCESS;
+    return vkCreateRenderPass(m_Device, &renderPassInfo, nullptr, &mRenderPass) == VK_SUCCESS;
 }
