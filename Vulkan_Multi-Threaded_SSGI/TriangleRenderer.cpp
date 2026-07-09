@@ -9,33 +9,33 @@
 
 namespace
 {
-bool LoadShaderModule(VkDevice device, const std::filesystem::path& sourcePath, VkShaderModule& outModule)
-{
-    std::filesystem::path outputPath = sourcePath;
-    outputPath.replace_extension(".spv");
+	bool LoadShaderModule(VkDevice device, const std::filesystem::path& sourcePath, VkShaderModule& outModule)
+	{
+		std::filesystem::path outputPath = sourcePath;
+		outputPath.replace_extension(".spv");
 
-    std::string validator = R"(C:\VulkanSDK\1.3.261.1\Bin\glslangValidator.exe)";
-    std::string command = validator + " -V " + sourcePath.string() + " -o " + outputPath.string();
-    int result = std::system(command.c_str());
-    if (result != 0)
-        return false;
+		std::string validator = R"(C:\VulkanSDK\1.3.261.1\Bin\glslangValidator.exe)";
+		std::string command = validator + " -V " + sourcePath.string() + " -o " + outputPath.string();
+		int result = std::system(command.c_str());
+		if (result != 0)
+			return false;
 
-    std::ifstream file(outputPath, std::ios::binary | std::ios::ate);
-    if (!file.is_open())
-        return false;
+		std::ifstream file(outputPath, std::ios::binary | std::ios::ate);
+		if (!file.is_open())
+			return false;
 
-    std::streamsize size = file.tellg();
-    file.seekg(0, std::ios::beg);
-    std::vector<char> buffer(static_cast<size_t>(size));
-    if (!file.read(buffer.data(), size))
-        return false;
+		std::streamsize size = file.tellg();
+		file.seekg(0, std::ios::beg);
+		std::vector<char> buffer(static_cast<size_t>(size));
+		if (!file.read(buffer.data(), size))
+			return false;
 
-    VkShaderModuleCreateInfo createInfo{};
-    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    createInfo.codeSize = buffer.size();
-    createInfo.pCode = reinterpret_cast<const uint32_t*>(buffer.data());
-    return vkCreateShaderModule(device, &createInfo, nullptr, &outModule) == VK_SUCCESS;
-}
+		VkShaderModuleCreateInfo createInfo{};
+		createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+		createInfo.codeSize = buffer.size();
+		createInfo.pCode = reinterpret_cast<const uint32_t*>(buffer.data());
+		return vkCreateShaderModule(device, &createInfo, nullptr, &outModule) == VK_SUCCESS;
+	}
 }
 
 TriangleRenderer::TriangleRenderer(VulkanContext& _context)

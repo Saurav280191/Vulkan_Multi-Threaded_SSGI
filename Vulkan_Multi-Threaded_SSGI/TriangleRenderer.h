@@ -11,6 +11,12 @@ public:
     void DrawFrame();
 
 private:
+    bool CreateGraphicsPipeline();
+    bool CreateFramebuffers();
+    bool CreateCommandPool();
+    bool CreateCommandBuffers();
+    bool CreateSyncObjects();
+
     VulkanContext& mContext;
     VkPipelineLayout mPipelineLayout = VK_NULL_HANDLE;
     VkPipeline mPipeline = VK_NULL_HANDLE;
@@ -20,10 +26,4 @@ private:
     VkSemaphore mImageAvailableSemaphore = VK_NULL_HANDLE;
     VkSemaphore mRenderFinishedSemaphore = VK_NULL_HANDLE;
     VkFence mInFlightFence = VK_NULL_HANDLE;
-
-    bool CreateGraphicsPipeline();
-    bool CreateFramebuffers();
-    bool CreateCommandPool();
-    bool CreateCommandBuffers();
-    bool CreateSyncObjects();
 };
