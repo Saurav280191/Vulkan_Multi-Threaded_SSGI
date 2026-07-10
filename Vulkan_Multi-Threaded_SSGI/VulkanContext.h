@@ -33,9 +33,9 @@ private:
 
 	VkInstance mInstance = VK_NULL_HANDLE;
 	VkPhysicalDevice mPhysicalDevice = VK_NULL_HANDLE;
-	VkDevice m_Device = VK_NULL_HANDLE;
-	VkQueue m_GraphicsQueue = VK_NULL_HANDLE;
-	VkQueue m_PresentQueue = VK_NULL_HANDLE;
+	VkDevice mDevice = VK_NULL_HANDLE;
+	VkQueue mGraphicsQueue = VK_NULL_HANDLE;
+	VkQueue mPresentQueue = VK_NULL_HANDLE;
 	VkSurfaceKHR mSurface = VK_NULL_HANDLE;
 	VkSwapchainKHR mSwapChain = VK_NULL_HANDLE;
 	VkRenderPass mRenderPass = VK_NULL_HANDLE;

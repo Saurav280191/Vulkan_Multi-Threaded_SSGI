@@ -1,6 +1,7 @@
 #include "VulkanContext.h"
 #include <vector>
 #include <set>
+#include <iostream>
 
 bool VulkanContext::Init(Window& _window)
 {
@@ -21,8 +22,8 @@ bool VulkanContext::Init(Window& _window)
 
 void VulkanContext::WaitIdle()
 {
-    if (m_Device != VK_NULL_HANDLE)
-        vkDeviceWaitIdle(m_Device);
+    if (mDevice != VK_NULL_HANDLE)
+        vkDeviceWaitIdle(mDevice);
 }
 
 bool VulkanContext::CreateInstance()
@@ -151,11 +152,11 @@ bool VulkanContext::CreateDevice()
     deviceInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
     deviceInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
-    if (vkCreateDevice(mPhysicalDevice, &deviceInfo, nullptr, &m_Device) != VK_SUCCESS)
+    if (vkCreateDevice(mPhysicalDevice, &deviceInfo, nullptr, &mDevice) != VK_SUCCESS)
         return false;
 
-    vkGetDeviceQueue(m_Device, mGraphicsQueueFamily, 0, &m_GraphicsQueue);
-    vkGetDeviceQueue(m_Device, mPresentQueueFamily, 0, &m_PresentQueue);
+    vkGetDeviceQueue(mDevice, mGraphicsQueueFamily, 0, &mGraphicsQueue);
+    vkGetDeviceQueue(mDevice, mPresentQueueFamily, 0, &mPresentQueue);
     return true;
 }
 
@@ -232,12 +233,12 @@ bool VulkanContext::CreateSwapchain()
         createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     }
 
-    if (vkCreateSwapchainKHR(m_Device, &createInfo, nullptr, &mSwapChain) != VK_SUCCESS)
+    if (vkCreateSwapchainKHR(mDevice, &createInfo, nullptr, &mSwapChain) != VK_SUCCESS)
         return false;
 
-    vkGetSwapchainImagesKHR(m_Device, mSwapChain, &imageCount, nullptr);
+    vkGetSwapchainImagesKHR(mDevice, mSwapChain, &imageCount, nullptr);
     mSwapchainImages.resize(imageCount);
-    vkGetSwapchainImagesKHR(m_Device, mSwapChain, &imageCount, mSwapchainImages.data());
+    vkGetSwapchainImagesKHR(mDevice, mSwapChain, &imageCount, mSwapchainImages.data());
 
     mSwapchainFormat = surfaceFormat.format;
     mSwapchainExtent = extent;
@@ -260,7 +261,7 @@ bool VulkanContext::CreateSwapchain()
         viewInfo.subresourceRange.baseArrayLayer = 0;
         viewInfo.subresourceRange.layerCount = 1;
 
-        if (vkCreateImageView(m_Device, &viewInfo, nullptr, &mSwapchainImageViews[i]) != VK_SUCCESS)
+        if (vkCreateImageView(mDevice, &viewInfo, nullptr, &mSwapchainImageViews[i]) != VK_SUCCESS)
             return false;
     }
 
@@ -305,5 +306,6 @@ bool VulkanContext::CreateRenderPass()
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
-    return vkCreateRenderPass(m_Device, &renderPassInfo, nullptr, &mRenderPass) == VK_SUCCESS;
+    return vkCreateRenderPass(mDevice, &renderPassInfo, nullptr, &mRenderPass) == VK_SUCCESS;
+}
 }
