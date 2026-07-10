@@ -24,6 +24,13 @@ public:
 	uint32_t GetPresentQueueFamily() const { return mPresentQueueFamily; }
 
 private:
+	bool CreateInstance();
+	bool CreateSurface(Window& _window);
+	bool PickPhysicalDevice();
+	bool CreateDevice();
+	bool CreateSwapchain();
+	bool CreateRenderPass();
+
 	VkInstance mInstance = VK_NULL_HANDLE;
 	VkPhysicalDevice mPhysicalDevice = VK_NULL_HANDLE;
 	VkDevice m_Device = VK_NULL_HANDLE;
@@ -38,12 +45,5 @@ private:
 	std::vector<VkImageView> mSwapchainImageViews;
 	uint32_t mGraphicsQueueFamily = 0;
 	uint32_t mPresentQueueFamily = 0;
-
-	bool CreateInstance();
-	bool CreateSurface(Window& _window);
-	bool PickPhysicalDevice();
-	bool CreateDevice();
-	bool CreateSwapchain();
-	bool CreateRenderPass();
 };
 
