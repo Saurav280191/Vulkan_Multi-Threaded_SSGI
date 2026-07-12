@@ -9,9 +9,9 @@ public:
 	bool Init(Window& _window);
 	void WaitIdle();
 
-	VkDevice GetDevice() const { return m_Device; }
-	VkQueue GetGraphicsQueue() const { return m_GraphicsQueue; }
-	VkQueue GetPresentQueue() const { return m_PresentQueue; }
+	VkDevice GetDevice() const { return mDevice; }
+	VkQueue GetGraphicsQueue() const { return mGraphicsQueue; }
+	VkQueue GetPresentQueue() const { return mPresentQueue; }
 	VkSurfaceKHR GetSurface() const { return mSurface; }
 	VkSwapchainKHR GetSwapchain() const { return mSwapChain; }
 	VkRenderPass GetRenderPass() const { return mRenderPass; }
