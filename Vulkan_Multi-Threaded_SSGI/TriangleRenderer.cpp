@@ -7,20 +7,16 @@
 #include <iostream>
 #include <vector>
 
-namespace
+namespace Helper
 {
-	bool LoadShaderModule(VkDevice device, const std::filesystem::path& sourcePath, VkShaderModule& outModule)
+	bool LoadShaderModule(VkDevice _device, const std::filesystem::path& _spvPath, VkShaderModule& _outModule)
 	{
-		std::filesystem::path outputPath = sourcePath;
-		outputPath.replace_extension(".spv");
+        if (_spvPath.extension() != ".spv")
+        {
+            std::cout << "Invalid .spv file!" << std::endl;
+        }
 
-		std::string validator = R"(C:\VulkanSDK\1.3.261.1\Bin\glslangValidator.exe)";
-		std::string command = validator + " -V " + sourcePath.string() + " -o " + outputPath.string();
-		int result = std::system(command.c_str());
-		if (result != 0)
-			return false;
-
-		std::ifstream file(outputPath, std::ios::binary | std::ios::ate);
+		std::ifstream file(_spvPath, std::ios::binary | std::ios::ate);
 		if (!file.is_open())
 			return false;
 
@@ -94,38 +90,22 @@ TriangleRenderer::~TriangleRenderer()
 
 bool TriangleRenderer::CreateGraphicsPipeline()
 {
-    std::filesystem::path shaderDir = std::filesystem::current_path() / "shaders";
-    std::filesystem::create_directories(shaderDir);
+    std::filesystem::path shaderDir = std::filesystem::current_path() / "Resources/Shaders";
+    
+    if (!std::filesystem::exists(shaderDir))
+    {
+        std::filesystem::create_directories(shaderDir);
+    }
 
-	std::filesystem::path vertShaderPath = shaderDir / "triangle.vert";
-	{
-		std::ofstream file(vertShaderPath, std::ios::trunc);
-		file << R"(#version 450
-layout(location = 0) out vec2 fragCoord;
-vec2 positions[3] = vec2[](vec2(0.0, -0.5), vec2(0.5, 0.5), vec2(-0.5, 0.5));
-void main()
-{
-    gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
-})";
-	}
-
-	std::filesystem::path fragShaderPath = shaderDir / "triangle.frag";
-	{
-		std::ofstream file(fragShaderPath, std::ios::trunc);
-		file << R"(#version 450
-layout(location = 0) out vec4 outColor;
-void main()
-{
-    outColor = vec4(1.0, 0.5, 0.2, 1.0);
-})";
-	}
+	std::filesystem::path vertShaderPath = shaderDir / "triangle.vert.spv";
+	std::filesystem::path fragShaderPath = shaderDir / "triangle.frag.spv";
 
     VkShaderModule vertModule = VK_NULL_HANDLE;
-    if (!LoadShaderModule(mContext.GetDevice(), vertShaderPath, vertModule))
+    if (!Helper::LoadShaderModule(mContext.GetDevice(), vertShaderPath, vertModule))
         return false;
 
     VkShaderModule fragModule = VK_NULL_HANDLE;
-    if (!LoadShaderModule(mContext.GetDevice(), fragShaderPath, fragModule))
+    if (!Helper::LoadShaderModule(mContext.GetDevice(), fragShaderPath, fragModule))
     {
         vkDestroyShaderModule(mContext.GetDevice(), vertModule, nullptr);
         return false;
