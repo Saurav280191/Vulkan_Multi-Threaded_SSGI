@@ -5,7 +5,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <vector>
 
 namespace Helper
 {
@@ -22,6 +21,7 @@ namespace Helper
 
 		std::streamsize size = file.tellg();
 		file.seekg(0, std::ios::beg);
+
 		std::vector<char> buffer(static_cast<size_t>(size));
 		if (!file.read(buffer.data(), size))
 			return false;
@@ -30,7 +30,7 @@ namespace Helper
 		createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
 		createInfo.codeSize = buffer.size();
 		createInfo.pCode = reinterpret_cast<const uint32_t*>(buffer.data());
-		return vkCreateShaderModule(device, &createInfo, nullptr, &outModule) == VK_SUCCESS;
+		return vkCreateShaderModule(_device, &createInfo, nullptr, &_outModule) == VK_SUCCESS;
 	}
 }
 
@@ -40,6 +40,13 @@ TriangleRenderer::TriangleRenderer(VulkanContext& _context)
     CreateGraphicsPipeline();
     CreateFramebuffers();
     CreateCommandPool();
+
+	vertices = {
+	{{0.0f, -0.5f}},
+	{{0.5f, 0.5f}},
+	{{-0.5f, 0.5f}} };
+
+    CreateVertexBuffer();
     CreateCommandBuffers();
     CreateSyncObjects();
 }
@@ -86,6 +93,16 @@ TriangleRenderer::~TriangleRenderer()
     { 
         vkDestroyPipelineLayout(mContext.GetDevice(), mPipelineLayout, nullptr); 
     }
+
+    if (mVertexBuffer != VK_NULL_HANDLE)
+    {
+        vkDestroyBuffer(mContext.GetDevice(), mVertexBuffer, nullptr);
+    }
+
+    if (mVertexBufferMemory != VK_NULL_HANDLE)
+    {
+        vkFreeMemory(mContext.GetDevice(), mVertexBufferMemory, nullptr);
+    }
 }
 
 bool TriangleRenderer::CreateGraphicsPipeline()
@@ -126,8 +143,23 @@ bool TriangleRenderer::CreateGraphicsPipeline()
     shaderStages[1].module = fragModule;
     shaderStages[1].pName = "main";
 
+    VkVertexInputBindingDescription bindingDesc{};
+    bindingDesc.binding = 0;
+    bindingDesc.stride = sizeof(Vertex);
+    bindingDesc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    VkVertexInputAttributeDescription attributeDesc{};
+    attributeDesc.binding = 0;
+    attributeDesc.location = 0;
+    attributeDesc.format = VK_FORMAT_R32G32_SFLOAT;
+    attributeDesc.offset = offsetof(Vertex, pos);
+
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInputInfo.vertexBindingDescriptionCount = 1;
+    vertexInputInfo.pVertexBindingDescriptions = &bindingDesc;
+    vertexInputInfo.vertexAttributeDescriptionCount = 1;
+    vertexInputInfo.pVertexAttributeDescriptions = &attributeDesc;
 
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -258,6 +290,87 @@ bool TriangleRenderer::CreateSyncObjects()
         && vkCreateFence(mContext.GetDevice(), &fenceInfo, nullptr, &mInFlightFence) == VK_SUCCESS;
 }
 
+bool TriangleRenderer::CreateVertexBuffer()
+{
+    VkDevice device = mContext.GetDevice();
+    if (vertices.empty())
+    {
+        return false;
+    }
+    
+    VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+
+    // Create staging buffer (CPU-Visible)
+    VkBuffer stagingBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory stagingMemory = VK_NULL_HANDLE;
+    if (!mContext.CreateBuffer(bufferSize, 
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        stagingBuffer,
+        stagingMemory))
+    {
+        return false;
+    }
+
+    // Map and copy vertex data
+    void* data = nullptr;
+    vkMapMemory(device, stagingMemory, 0, bufferSize, 0, &data);
+    std::memcpy(data, vertices.data(), static_cast<size_t>(bufferSize));
+    vkUnmapMemory(device, stagingMemory);
+
+    // Create device-local vertex buffer
+    if (!mContext.CreateBuffer(bufferSize,
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        mVertexBuffer,
+        mVertexBufferMemory))
+    {
+        vkDestroyBuffer(device, stagingBuffer, nullptr);
+        vkFreeMemory(device, stagingMemory, nullptr);
+        return false;
+    }
+
+    // Copy staging -> vertex buffer using a one-time command buffer
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = mCommandPool;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = 1;
+
+    VkCommandBuffer cmd;
+    if (vkAllocateCommandBuffers(device, &allocInfo, &cmd) != VK_SUCCESS)
+    {
+        return false;
+    }
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cmd, &beginInfo);
+
+    VkBufferCopy copyRegion{};
+    copyRegion.srcOffset = 0;
+    copyRegion.dstOffset = 0;
+    copyRegion.size = bufferSize;
+    vkCmdCopyBuffer(cmd, stagingBuffer, mVertexBuffer, 1, &copyRegion);
+    
+    vkEndCommandBuffer(cmd);
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &cmd;
+
+    vkQueueSubmit(mContext.GetGraphicsQueue(), 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(mContext.GetGraphicsQueue());
+
+    vkFreeCommandBuffers(device, mCommandPool, 1, &cmd);
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingMemory, nullptr);
+
+    return true;
+}
+
 void TriangleRenderer::DrawFrame()
 {
     vkWaitForFences(mContext.GetDevice(), 1, &mInFlightFence, VK_TRUE, UINT64_MAX);
@@ -287,6 +400,11 @@ void TriangleRenderer::DrawFrame()
 
     vkCmdBeginRenderPass(mCommandBuffers[0], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(mCommandBuffers[0], VK_PIPELINE_BIND_POINT_GRAPHICS, mPipeline);
+    
+    VkBuffer buffers[] = { mVertexBuffer };
+    VkDeviceSize offsets[] = { 0 };
+    vkCmdBindVertexBuffers(mCommandBuffers[0], 0, 1, buffers, offsets);
+
     vkCmdDraw(mCommandBuffers[0], 3, 1, 0, 0);
     vkCmdEndRenderPass(mCommandBuffers[0]);
     vkEndCommandBuffer(mCommandBuffers[0]);

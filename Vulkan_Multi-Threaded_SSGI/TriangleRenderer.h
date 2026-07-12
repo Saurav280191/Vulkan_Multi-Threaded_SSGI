@@ -2,6 +2,13 @@
 #include <vector>
 #include "VulkanContext.h"
 
+struct Vertex
+{
+    float pos[2];
+    // TODO: Add color later
+    // float color[3];
+};
+
 class TriangleRenderer
 {
 public:
@@ -16,14 +23,20 @@ private:
     bool CreateCommandPool();
     bool CreateCommandBuffers();
     bool CreateSyncObjects();
+    bool CreateVertexBuffer();
 
-    VulkanContext& mContext;
-    VkPipelineLayout mPipelineLayout = VK_NULL_HANDLE;
-    VkPipeline mPipeline = VK_NULL_HANDLE;
-    VkCommandPool mCommandPool = VK_NULL_HANDLE;
-    std::vector<VkCommandBuffer> mCommandBuffers;
-    std::vector<VkFramebuffer> mFramebuffers;
-    VkSemaphore mImageAvailableSemaphore = VK_NULL_HANDLE;
-    VkSemaphore mRenderFinishedSemaphore = VK_NULL_HANDLE;
-    VkFence mInFlightFence = VK_NULL_HANDLE;
+    VulkanContext&                  mContext;
+    VkPipelineLayout                mPipelineLayout = VK_NULL_HANDLE;
+    VkPipeline                      mPipeline = VK_NULL_HANDLE;
+    VkCommandPool                   mCommandPool = VK_NULL_HANDLE;
+    std::vector<VkCommandBuffer>    mCommandBuffers;
+    std::vector<VkFramebuffer>      mFramebuffers;
+    VkSemaphore                     mImageAvailableSemaphore = VK_NULL_HANDLE;
+    VkSemaphore                     mRenderFinishedSemaphore = VK_NULL_HANDLE;
+    VkFence                         mInFlightFence = VK_NULL_HANDLE;
+
+    VkBuffer                        mVertexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory                  mVertexBufferMemory = VK_NULL_HANDLE;
+
+    std::vector<Vertex> vertices = {};
 };

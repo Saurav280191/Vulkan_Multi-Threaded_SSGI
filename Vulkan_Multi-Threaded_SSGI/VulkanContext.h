@@ -23,6 +23,8 @@ public:
 	uint32_t GetGraphicsQueueFamily() const { return mGraphicsQueueFamily; }
 	uint32_t GetPresentQueueFamily() const { return mPresentQueueFamily; }
 
+	bool CreateBuffer(VkDeviceSize _size, VkBufferUsageFlags _usage,
+		VkMemoryPropertyFlags _properties, VkBuffer& _buffer, VkDeviceMemory& _bufferMemory);
 private:
 	bool CreateInstance();
 	bool CreateSurface(Window& _window);
@@ -30,7 +32,8 @@ private:
 	bool CreateDevice();
 	bool CreateSwapchain();
 	bool CreateRenderPass();
-
+	
+	uint32_t FindMemoryType(uint32_t _typeFilter, VkMemoryPropertyFlags _properties);
 	VkInstance mInstance = VK_NULL_HANDLE;
 	VkPhysicalDevice mPhysicalDevice = VK_NULL_HANDLE;
 	VkDevice mDevice = VK_NULL_HANDLE;
