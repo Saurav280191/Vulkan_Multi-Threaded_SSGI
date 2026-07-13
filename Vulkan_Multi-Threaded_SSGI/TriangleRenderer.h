@@ -1,4 +1,5 @@
 #pragma once
+#include <filesystem>
 #include <vector>
 #include "VulkanContext.h"
 
@@ -25,6 +26,8 @@ private:
     bool CreateSyncObjects();
     bool CreateVertexBuffer();
 
+    void ReloadShadersAndPipeline();
+
     VulkanContext&                  mContext;
     VkPipelineLayout                mPipelineLayout = VK_NULL_HANDLE;
     VkPipeline                      mPipeline = VK_NULL_HANDLE;
@@ -39,4 +42,12 @@ private:
     VkDeviceMemory                  mVertexBufferMemory = VK_NULL_HANDLE;
 
     std::vector<Vertex> vertices = {};
+
+    // Variables for hot reload
+    VkShaderModule vertModule = VK_NULL_HANDLE;
+    VkShaderModule fragModule = VK_NULL_HANDLE;
+    std::filesystem::path mVertShaderPath;
+    std::filesystem::path mFragShaderPath;
+    std::filesystem::file_time_type vertTimestamp;
+    std::filesystem::file_time_type fragTimestamp;
 };

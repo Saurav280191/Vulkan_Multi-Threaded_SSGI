@@ -117,15 +117,25 @@ bool TriangleRenderer::CreateGraphicsPipeline()
 	std::filesystem::path vertShaderPath = shaderDir / "triangle.vert.spv";
 	std::filesystem::path fragShaderPath = shaderDir / "triangle.frag.spv";
 
-    VkShaderModule vertModule = VK_NULL_HANDLE;
     if (!Helper::LoadShaderModule(mContext.GetDevice(), vertShaderPath, vertModule))
+    {
         return false;
+    }
+    else
+    {
+        mVertShaderPath = vertShaderPath;
+        vertTimestamp = std::filesystem::last_write_time(vertShaderPath);
+    }
 
-    VkShaderModule fragModule = VK_NULL_HANDLE;
     if (!Helper::LoadShaderModule(mContext.GetDevice(), fragShaderPath, fragModule))
     {
         vkDestroyShaderModule(mContext.GetDevice(), vertModule, nullptr);
         return false;
+    }
+    else
+    {
+        mFragShaderPath = fragShaderPath;
+        fragTimestamp = std::filesystem::last_write_time(fragShaderPath);
     }
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
@@ -371,8 +381,33 @@ bool TriangleRenderer::CreateVertexBuffer()
     return true;
 }
 
+void TriangleRenderer::ReloadShadersAndPipeline()
+{
+    vkDeviceWaitIdle(mContext.GetDevice());
+
+    // Destroy old pipeline
+    vkDestroyPipeline(mContext.GetDevice(), mPipeline, nullptr);
+    
+    // Destroy old shader modules
+    vkDestroyShaderModule(mContext.GetDevice(), vertModule, nullptr);
+    vkDestroyShaderModule(mContext.GetDevice(), fragModule, nullptr);
+
+    // Recreate pipeline (loads new SPIR-V)
+    CreateGraphicsPipeline();
+}
+
 void TriangleRenderer::DrawFrame()
 {
+    auto newVertTime = std::filesystem::last_write_time(mVertShaderPath);
+    auto newFragTime = std::filesystem::last_write_time(mFragShaderPath);
+
+    if (newVertTime != vertTimestamp || newFragTime != fragTimestamp)
+    {
+        ReloadShadersAndPipeline();
+        vertTimestamp = newVertTime;
+        fragTimestamp = newFragTime;
+    }
+
     vkWaitForFences(mContext.GetDevice(), 1, &mInFlightFence, VK_TRUE, UINT64_MAX);
     vkResetFences(mContext.GetDevice(), 1, &mInFlightFence);
 
