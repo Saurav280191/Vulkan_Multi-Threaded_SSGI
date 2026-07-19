@@ -22,6 +22,7 @@ int main()
 	while (!window.ShouldClose())
 	{
 		window.PollEvents();
+		renderer.Update();
 		renderer.DrawFrame();
 	}
 

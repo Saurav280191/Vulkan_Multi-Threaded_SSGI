@@ -1,3 +1,5 @@
+#define _CRT_SECURE_NO_WARNINGS
+
 #include "TriangleRenderer.h"
 #include <array>
 #include <cstdlib>
@@ -6,45 +8,26 @@
 #include <fstream>
 #include <iostream>
 
-namespace Helper
-{
-	bool LoadShaderModule(VkDevice _device, const std::filesystem::path& _spvPath, VkShaderModule& _outModule)
-	{
-        if (_spvPath.extension() != ".spv")
-        {
-            std::cout << "Invalid .spv file!" << std::endl;
-        }
-
-		std::ifstream file(_spvPath, std::ios::binary | std::ios::ate);
-		if (!file.is_open())
-			return false;
-
-		std::streamsize size = file.tellg();
-		file.seekg(0, std::ios::beg);
-
-		std::vector<char> buffer(static_cast<size_t>(size));
-		if (!file.read(buffer.data(), size))
-			return false;
-
-		VkShaderModuleCreateInfo createInfo{};
-		createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-		createInfo.codeSize = buffer.size();
-		createInfo.pCode = reinterpret_cast<const uint32_t*>(buffer.data());
-		return vkCreateShaderModule(_device, &createInfo, nullptr, &_outModule) == VK_SUCCESS;
-	}
-}
-
 TriangleRenderer::TriangleRenderer(VulkanContext& _context)
     : mContext(_context)
 {
+    auto shaderDir = std::filesystem::current_path() / "Resources" / "Shaders";
+    mVertShaderGlslPath = shaderDir / "triangle.vert";
+    mFragShaderGlslPath = shaderDir / "triangle.frag";
+    mVertShaderSpvPath = shaderDir / "triangle.vert.spv";
+    mFragShaderSpvPath = shaderDir / "triangle.frag.spv";
+
+    mLastVertTimestamp = std::filesystem::last_write_time(mVertShaderGlslPath);
+    mLastFragTimestamp = std::filesystem::last_write_time(mFragShaderGlslPath);
+
     CreateGraphicsPipeline();
     CreateFramebuffers();
     CreateCommandPool();
 
-	vertices = {
-	{{0.0f, -0.5f}},
-	{{0.5f, 0.5f}},
-	{{-0.5f, 0.5f}} };
+    vertices = {
+    {{0.0f, -0.5f}},
+    {{0.5f, 0.5f}},
+    {{-0.5f, 0.5f}} };
 
     CreateVertexBuffer();
     CreateCommandBuffers();
@@ -105,43 +88,148 @@ TriangleRenderer::~TriangleRenderer()
     }
 }
 
+void TriangleRenderer::Update()
+{
+    // Make sure paths are not empty
+    if (mVertShaderGlslPath.empty() || mFragShaderGlslPath.empty())
+        return;
+
+    // Check shader timestamps
+    if (!CheckShaderTimestamps())
+    {
+        return;
+    }
+    
+    std::cout << "[HotReload] Change detected. Compiling shaders...\n";
+
+    if (!CompileShaders())
+    {
+        std::cerr << "[HotReload] Compile failed. Keeping existing pipeline.\n";
+        return;
+    }
+
+    vkDeviceWaitIdle(mContext.GetDevice());
+
+    ReloadShadersAndPipeline();
+
+    // Update timestamps after successful reload
+    std::error_code errorCode;
+    mLastVertTimestamp = std::filesystem::last_write_time(mVertShaderGlslPath, errorCode);
+    mLastFragTimestamp = std::filesystem::last_write_time(mFragShaderGlslPath, errorCode);
+
+    std::cout << "[HotReload] Shaders reloaded successfully.\n";
+}
+
+void TriangleRenderer::DrawFrame()
+{
+    vkWaitForFences(mContext.GetDevice(), 1, &mInFlightFence, VK_TRUE, UINT64_MAX);
+    vkResetFences(mContext.GetDevice(), 1, &mInFlightFence);
+
+    uint32_t imageIndex = 0;
+    VkResult result = vkAcquireNextImageKHR(mContext.GetDevice(), mContext.GetSwapchain(), UINT64_MAX, mImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+    {
+        return;
+    }
+
+    vkResetCommandBuffer(mCommandBuffers[0], 0);
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    vkBeginCommandBuffer(mCommandBuffers[0], &beginInfo);
+
+    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = mContext.GetRenderPass();
+    renderPassInfo.framebuffer = mFramebuffers[imageIndex];
+    renderPassInfo.renderArea.offset = {0, 0};
+    renderPassInfo.renderArea.extent = mContext.GetSwapchainExtent();
+    renderPassInfo.clearValueCount = 1;
+    renderPassInfo.pClearValues = &clearColor;
+
+    vkCmdBeginRenderPass(mCommandBuffers[0], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(mCommandBuffers[0], VK_PIPELINE_BIND_POINT_GRAPHICS, mPipeline);
+    
+    VkBuffer buffers[] = { mVertexBuffer };
+    VkDeviceSize offsets[] = { 0 };
+    vkCmdBindVertexBuffers(mCommandBuffers[0], 0, 1, buffers, offsets);
+
+    vkCmdDraw(mCommandBuffers[0], 3, 1, 0, 0);
+    vkCmdEndRenderPass(mCommandBuffers[0]);
+    vkEndCommandBuffer(mCommandBuffers[0]);
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    VkSemaphore waitSemaphores[] = { mImageAvailableSemaphore };
+    VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = waitSemaphores;
+    submitInfo.pWaitDstStageMask = waitStages;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = mCommandBuffers.data();
+    VkSemaphore signalSemaphores[] = { mRenderFinishedSemaphore };
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = signalSemaphores;
+
+    vkQueueSubmit(mContext.GetGraphicsQueue(), 1, &submitInfo, mInFlightFence);
+
+    VkSwapchainKHR swapchain = mContext.GetSwapchain();
+
+    VkPresentInfoKHR presentInfo{};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = signalSemaphores;
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = &swapchain;
+    presentInfo.pImageIndices = &imageIndex;
+
+    vkQueuePresentKHR(mContext.GetPresentQueue(), &presentInfo);
+}
+
 bool TriangleRenderer::CreateGraphicsPipeline()
 {
-    std::filesystem::path shaderDir = std::filesystem::current_path() / "Resources/Shaders";
-    
-    if (!std::filesystem::exists(shaderDir))
+    if (!Helper::Vulkan::Shader::LoadShaderModule(mContext.GetDevice(), mVertShaderSpvPath, vertModule))
     {
-        std::filesystem::create_directories(shaderDir);
-    }
-
-	std::filesystem::path vertShaderPath = shaderDir / "triangle.vert.spv";
-	std::filesystem::path fragShaderPath = shaderDir / "triangle.frag.spv";
-
-    if (!Helper::LoadShaderModule(mContext.GetDevice(), vertShaderPath, vertModule))
-    {
+        vertModule = VK_NULL_HANDLE;
         return false;
     }
-    else
+
+    if (!Helper::Vulkan::Shader::LoadShaderModule(mContext.GetDevice(), mFragShaderSpvPath, fragModule))
     {
-        mVertShaderPath = vertShaderPath;
-        vertTimestamp = std::filesystem::last_write_time(vertShaderPath);
+		if (vertModule != VK_NULL_HANDLE)
+		{
+			vkDestroyShaderModule(mContext.GetDevice(), vertModule, nullptr);
+            vertModule = VK_NULL_HANDLE;
+		}
+		return false;
     }
 
-    if (!Helper::LoadShaderModule(mContext.GetDevice(), fragShaderPath, fragModule))
+    // Destroy old pipeline layout if we will recreate it
+    if (mPipelineLayout != VK_NULL_HANDLE)
     {
-        vkDestroyShaderModule(mContext.GetDevice(), vertModule, nullptr);
-        return false;
-    }
-    else
-    {
-        mFragShaderPath = fragShaderPath;
-        fragTimestamp = std::filesystem::last_write_time(fragShaderPath);
+        vkDestroyPipelineLayout(mContext.GetDevice(), mPipelineLayout, nullptr);
+        mPipelineLayout = VK_NULL_HANDLE;
     }
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     if (vkCreatePipelineLayout(mContext.GetDevice(), &pipelineLayoutInfo, nullptr, &mPipelineLayout) != VK_SUCCESS)
+    {
+        // Cleanup shader modules on failure
+        if (vertModule != VK_NULL_HANDLE) 
+        { 
+            vkDestroyShaderModule(mContext.GetDevice(), vertModule, nullptr); 
+            vertModule = VK_NULL_HANDLE; 
+        }
+        
+        if (fragModule != VK_NULL_HANDLE) 
+        { 
+            vkDestroyShaderModule(mContext.GetDevice(), fragModule, nullptr); 
+            fragModule = VK_NULL_HANDLE; 
+        }
+
         return false;
+    }
 
     VkPipelineShaderStageCreateInfo shaderStages[2]{};
     shaderStages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -235,9 +323,6 @@ bool TriangleRenderer::CreateGraphicsPipeline()
     pipelineInfo.subpass = 0;
 
     VkResult pipelineResult = vkCreateGraphicsPipelines(mContext.GetDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &mPipeline);
-
-    vkDestroyShaderModule(mContext.GetDevice(), fragModule, nullptr);
-    vkDestroyShaderModule(mContext.GetDevice(), vertModule, nullptr);
 
     return pipelineResult == VK_SUCCESS;
 }
@@ -381,93 +466,111 @@ bool TriangleRenderer::CreateVertexBuffer()
     return true;
 }
 
+bool TriangleRenderer::CompileShaders()
+{
+    std::string out;
+    auto absVert = std::filesystem::absolute(mVertShaderGlslPath).string();
+    auto absFrag = std::filesystem::absolute(mFragShaderGlslPath).string();
+    auto absVertSpv = std::filesystem::absolute(mVertShaderSpvPath).string();
+    auto absFragSpv = std::filesystem::absolute(mFragShaderSpvPath).string();
+    
+    const char* sdkEnv = std::getenv("VULKAN_SDK");
+    if (!sdkEnv)
+    {
+        std::cerr << "[HotReload] ERROR: VULKAN_SDK environment variable not set.\n";
+        return false;
+    }
+
+    std::string glslang = std::string(sdkEnv) + "\\Bin\\glslangValidator.exe";
+
+    // Vertex shader
+    std::string cmdVert = "\"" + glslang + "\" -V \"" + absVert + "\" -o \"" + absVertSpv + "\"";
+
+    int rc = Helper::Vulkan::RunCommandCaptureOutput(cmdVert, out);
+    if (rc != 0) 
+    { 
+        std::cerr << "[HotReload] Vertex compile failed:\n" << out << "\n"; 
+        return false;
+    }
+
+    // Fragment shader
+    std::string cmdFrag = "\"" + glslang + "\" -V \"" + absFrag + "\" -o \"" + absFragSpv + "\"";
+    rc = Helper::Vulkan::RunCommandCaptureOutput(cmdFrag, out);
+    if (rc != 0) 
+    { 
+        std::cerr << "[HotReload] Fragment compile failed:\n" << out << "\n"; 
+        return false; 
+    }
+
+    return true;
+}
+
+bool TriangleRenderer::CheckShaderTimestamps()
+{
+    std::error_code errorCode;
+    auto vertWriteTime = std::filesystem::last_write_time(mVertShaderGlslPath, errorCode);
+    if (errorCode)
+    {
+        return false;
+    }
+
+    auto fragWriteTime = std::filesystem::last_write_time(mFragShaderGlslPath, errorCode);
+    if (errorCode)
+    {
+        return false;
+    }
+
+    return (vertWriteTime != mLastVertTimestamp) || (fragWriteTime != mLastFragTimestamp);
+}
+
 void TriangleRenderer::ReloadShadersAndPipeline()
 {
+    // Wait for GPU
     vkDeviceWaitIdle(mContext.GetDevice());
 
     // Destroy old pipeline
-    vkDestroyPipeline(mContext.GetDevice(), mPipeline, nullptr);
-    
-    // Destroy old shader modules
-    vkDestroyShaderModule(mContext.GetDevice(), vertModule, nullptr);
-    vkDestroyShaderModule(mContext.GetDevice(), fragModule, nullptr);
-
-    // Recreate pipeline (loads new SPIR-V)
-    CreateGraphicsPipeline();
-}
-
-void TriangleRenderer::DrawFrame()
-{
-    auto newVertTime = std::filesystem::last_write_time(mVertShaderPath);
-    auto newFragTime = std::filesystem::last_write_time(mFragShaderPath);
-
-    if (newVertTime != vertTimestamp || newFragTime != fragTimestamp)
+    if (mPipeline != VK_NULL_HANDLE)
     {
-        ReloadShadersAndPipeline();
-        vertTimestamp = newVertTime;
-        fragTimestamp = newFragTime;
+        vkDestroyPipeline(mContext.GetDevice(), mPipeline, nullptr);
+        mPipeline = VK_NULL_HANDLE;
     }
 
-    vkWaitForFences(mContext.GetDevice(), 1, &mInFlightFence, VK_TRUE, UINT64_MAX);
-    vkResetFences(mContext.GetDevice(), 1, &mInFlightFence);
-
-    uint32_t imageIndex = 0;
-    VkResult result = vkAcquireNextImageKHR(mContext.GetDevice(), mContext.GetSwapchain(), UINT64_MAX, mImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
-    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+    // Destroy old shader modules (only here)
+    if (vertModule != VK_NULL_HANDLE)
     {
+        vkDestroyShaderModule(mContext.GetDevice(), vertModule, nullptr);
+        vertModule = VK_NULL_HANDLE;
+    }
+    if (fragModule != VK_NULL_HANDLE)
+    {
+        vkDestroyShaderModule(mContext.GetDevice(), fragModule, nullptr);
+        fragModule = VK_NULL_HANDLE;
+    }
+
+    // Destroy pipeline layout. CreateGraphicsPipeline will recreate it
+    if (mPipelineLayout != VK_NULL_HANDLE)
+    {
+        vkDestroyPipelineLayout(mContext.GetDevice(), mPipelineLayout, nullptr);
+        mPipelineLayout = VK_NULL_HANDLE;
+    }
+
+    // Recreate pipeline (this will load the new .spv into vertModule/fragModule)
+    if (!CreateGraphicsPipeline())
+    {
+        std::cerr << "[HotReload] Failed to recreate pipeline after shader compile\n";
         return;
     }
 
-    vkResetCommandBuffer(mCommandBuffers[0], 0);
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    vkBeginCommandBuffer(mCommandBuffers[0], &beginInfo);
+    // Re-record command buffers
+    vkFreeCommandBuffers(mContext.GetDevice(), 
+        mCommandPool, 
+        static_cast<uint32_t>(mCommandBuffers.size()), 
+        mCommandBuffers.data());
 
-    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
-    VkRenderPassBeginInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = mContext.GetRenderPass();
-    renderPassInfo.framebuffer = mFramebuffers[imageIndex];
-    renderPassInfo.renderArea.offset = {0, 0};
-    renderPassInfo.renderArea.extent = mContext.GetSwapchainExtent();
-    renderPassInfo.clearValueCount = 1;
-    renderPassInfo.pClearValues = &clearColor;
+    CreateCommandBuffers();
 
-    vkCmdBeginRenderPass(mCommandBuffers[0], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(mCommandBuffers[0], VK_PIPELINE_BIND_POINT_GRAPHICS, mPipeline);
-    
-    VkBuffer buffers[] = { mVertexBuffer };
-    VkDeviceSize offsets[] = { 0 };
-    vkCmdBindVertexBuffers(mCommandBuffers[0], 0, 1, buffers, offsets);
-
-    vkCmdDraw(mCommandBuffers[0], 3, 1, 0, 0);
-    vkCmdEndRenderPass(mCommandBuffers[0]);
-    vkEndCommandBuffer(mCommandBuffers[0]);
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    VkSemaphore waitSemaphores[] = { mImageAvailableSemaphore };
-    VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-    submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = waitSemaphores;
-    submitInfo.pWaitDstStageMask = waitStages;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = mCommandBuffers.data();
-    VkSemaphore signalSemaphores[] = { mRenderFinishedSemaphore };
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = signalSemaphores;
-
-    vkQueueSubmit(mContext.GetGraphicsQueue(), 1, &submitInfo, mInFlightFence);
-
-    VkSwapchainKHR swapchain = mContext.GetSwapchain();
-
-    VkPresentInfoKHR presentInfo{};
-    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = signalSemaphores;
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = &swapchain;
-    presentInfo.pImageIndices = &imageIndex;
-
-    vkQueuePresentKHR(mContext.GetPresentQueue(), &presentInfo);
+    // Write timestamps on successful reload
+    std::error_code errorCode;
+    mLastVertTimestamp = std::filesystem::last_write_time(mVertShaderGlslPath, errorCode);
+    mLastFragTimestamp = std::filesystem::last_write_time(mFragShaderGlslPath, errorCode);
 }

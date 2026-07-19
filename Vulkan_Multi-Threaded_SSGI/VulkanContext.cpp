@@ -26,6 +26,44 @@ void VulkanContext::WaitIdle()
         vkDeviceWaitIdle(mDevice);
 }
 
+bool VulkanContext::CreateBuffer(VkDeviceSize _size, 
+    VkBufferUsageFlags _usage, 
+    VkMemoryPropertyFlags _properties, 
+    VkBuffer& _buffer, 
+    VkDeviceMemory& _bufferMemory)
+{
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = _size;
+    bufferInfo.usage = _usage;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateBuffer(mDevice, &bufferInfo, nullptr, &_buffer) != VK_SUCCESS)
+    {
+        return false;
+    }
+
+    VkMemoryRequirements memRequirements{};
+    vkGetBufferMemoryRequirements(mDevice, _buffer, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = FindMemoryType(memRequirements.memoryTypeBits, _properties);
+
+    if (vkAllocateMemory(mDevice, &allocInfo, nullptr, &_bufferMemory) != VK_SUCCESS)
+    {
+        return false;
+    }
+
+    if (vkBindBufferMemory(mDevice, _buffer, _bufferMemory, 0) != VK_SUCCESS)
+    {
+        return false;
+    }
+
+    return true;
+}
+
 bool VulkanContext::CreateInstance()
 {
     VkApplicationInfo appInfo{};
@@ -324,38 +362,4 @@ uint32_t VulkanContext::FindMemoryType(uint32_t _typeFilter, VkMemoryPropertyFla
     }
 
     throw std::runtime_error("Failed to find suitable memory type!");
-}
-
-bool VulkanContext::CreateBuffer(VkDeviceSize _size, VkBufferUsageFlags _usage, VkMemoryPropertyFlags _properties, VkBuffer& _buffer, VkDeviceMemory& _bufferMemory)
-{
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = _size;
-    bufferInfo.usage = _usage;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    if (vkCreateBuffer(mDevice, &bufferInfo, nullptr, &_buffer) != VK_SUCCESS)
-    {
-        return false;
-    }
-
-    VkMemoryRequirements memRequirements{};
-    vkGetBufferMemoryRequirements(mDevice, _buffer, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = FindMemoryType(memRequirements.memoryTypeBits, _properties);
-
-    if (vkAllocateMemory(mDevice, &allocInfo, nullptr, &_bufferMemory) != VK_SUCCESS)
-    {
-        return false;
-    }
-
-    if (vkBindBufferMemory(mDevice, _buffer, _bufferMemory, 0) != VK_SUCCESS)
-    {
-        return false;
-    }
-
-    return true;
 }

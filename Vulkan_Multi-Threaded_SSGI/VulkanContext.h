@@ -8,7 +8,14 @@ class VulkanContext
 public:
 	bool Init(Window& _window);
 	void WaitIdle();
+	
+	bool CreateBuffer(VkDeviceSize _size, 
+		VkBufferUsageFlags _usage,
+		VkMemoryPropertyFlags _properties, 
+		VkBuffer& _buffer, 
+		VkDeviceMemory& _bufferMemory);
 
+#pragma region Getters
 	VkDevice GetDevice() const { return mDevice; }
 	VkQueue GetGraphicsQueue() const { return mGraphicsQueue; }
 	VkQueue GetPresentQueue() const { return mPresentQueue; }
@@ -22,9 +29,8 @@ public:
 	const std::vector<VkImageView>& GetSwapchainImageViews() const { return mSwapchainImageViews; }
 	uint32_t GetGraphicsQueueFamily() const { return mGraphicsQueueFamily; }
 	uint32_t GetPresentQueueFamily() const { return mPresentQueueFamily; }
+#pragma endregion
 
-	bool CreateBuffer(VkDeviceSize _size, VkBufferUsageFlags _usage,
-		VkMemoryPropertyFlags _properties, VkBuffer& _buffer, VkDeviceMemory& _bufferMemory);
 private:
 	bool CreateInstance();
 	bool CreateSurface(Window& _window);

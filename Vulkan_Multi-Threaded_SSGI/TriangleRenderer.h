@@ -1,7 +1,9 @@
 #pragma once
 #include <filesystem>
 #include <vector>
+#include <glm/glm.hpp>
 #include "VulkanContext.h"
+#include "Helper.h"
 
 struct Vertex
 {
@@ -16,8 +18,8 @@ public:
     explicit TriangleRenderer(VulkanContext& _context);
     ~TriangleRenderer();
 
+    void Update();
     void DrawFrame();
-
 private:
     bool CreateGraphicsPipeline();
     bool CreateFramebuffers();
@@ -26,6 +28,12 @@ private:
     bool CreateSyncObjects();
     bool CreateVertexBuffer();
 
+    bool CompileShaders();
+    
+    // Checks for last write time for shaders. 
+    // Returns true if vert or frag GLSL shaders are modified.
+    bool CheckShaderTimestamps();
+    
     void ReloadShadersAndPipeline();
 
     VulkanContext&                  mContext;
@@ -46,8 +54,12 @@ private:
     // Variables for hot reload
     VkShaderModule vertModule = VK_NULL_HANDLE;
     VkShaderModule fragModule = VK_NULL_HANDLE;
-    std::filesystem::path mVertShaderPath;
-    std::filesystem::path mFragShaderPath;
-    std::filesystem::file_time_type vertTimestamp;
-    std::filesystem::file_time_type fragTimestamp;
+    
+    std::filesystem::path mVertShaderGlslPath;
+    std::filesystem::path mFragShaderGlslPath;
+    std::filesystem::path mVertShaderSpvPath;
+    std::filesystem::path mFragShaderSpvPath;
+
+    std::filesystem::file_time_type mLastVertTimestamp;
+    std::filesystem::file_time_type mLastFragTimestamp;
 };

@@ -137,12 +137,14 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Helper.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="TriangleRenderer.cpp" />
     <ClCompile Include="VulkanContext.cpp" />
     <ClCompile Include="Window.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Helper.h" />
     <ClInclude Include="TriangleRenderer.h" />
     <ClInclude Include="VulkanContext.h" />
     <ClInclude Include="Window.h" />
